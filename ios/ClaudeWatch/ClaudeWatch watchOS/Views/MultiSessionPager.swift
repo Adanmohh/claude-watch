@@ -17,20 +17,36 @@ struct MultiSessionPager: View {
         }
     }
 
+    // Empty state — a dim ledger, never a blank screen.
     private var waitingView: some View {
-        VStack(spacing: 8) {
-            AppLogo(size: 56)
-                .opacity(0.6)
-            Text("Waiting for session...")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
-            Text("Start Claude or Codex on your Mac")
-                .font(.system(size: 9))
-                .foregroundColor(.white.opacity(0.3))
-                .multilineTextAlignment(.center)
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                BlockCursor(mode: state.sessionState.connection == .connected ? .idle : .offline,
+                            width: 8, height: 15)
+                Text(state.sessionState.connection == .connected ? "Connected" : "Offline")
+                    .font(.system(.caption, design: .default).weight(.semibold))
+                    .foregroundStyle(Palette.textPrimary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Palette.surface)
+            .overlay(alignment: .bottom) { Rectangle().fill(Palette.border).frame(height: 0.5) }
+
+            VStack(alignment: .leading, spacing: 4) {
+                LedgerWaitingRow(text: "waiting for session", compact: true)
+                Text("Start Claude or Codex on your Mac")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Palette.textDim.opacity(0.7))
+                    .padding(.leading, 17)
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Palette.watchBg.ignoresSafeArea())
     }
 }
 

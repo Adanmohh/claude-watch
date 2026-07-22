@@ -2,107 +2,88 @@ import SwiftUI
 
 // MARK: - VoiceInputView
 
-/// Full-screen voice capture mode. Uses watchOS system dictation (TextField with dictation)
-/// since the Speech framework is not available on watchOS.
+/// Full-screen voice capture. Uses watchOS system dictation (a dictation-enabled
+/// TextField) since the Speech framework is unavailable on watchOS. Styled as a
+/// ❯-prefixed prompt line consistent with the ledger.
 struct VoiceInputView: View {
     var sessionId: String? = nil
     @EnvironmentObject private var session: WatchViewState
     @Environment(\.dismiss) private var dismiss
 
     @State private var commandText = ""
-    @State private var showError = false
-    @State private var animationPhase: CGFloat = 0
     @FocusState private var isTextFieldFocused: Bool
 
-    private let waveTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
-
     var body: some View {
-        ZStack {
-            Theme.Background.capture.ignoresSafeArea()
-
-            VStack(spacing: 12) {
-                Text("Say your command")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(Theme.Text.primary)
-
-                // Waveform animation (decorative)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
-                    ForEach(0..<3, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Theme.Text.primary)
-                            .frame(width: 6, height: barHeight(for: index))
-                    }
-                }
-                .frame(height: 40)
-                .onReceive(waveTimer) { _ in
-                    animationPhase += 1
+                    BlockCursor(mode: .working, width: 8, height: 15)
+                    Text("Command")
+                        .font(.system(.caption, design: .default).weight(.semibold))
+                        .foregroundStyle(Palette.textPrimary)
+                    Spacer(minLength: 0)
                 }
 
-                // watchOS dictation-enabled TextField — tapping the mic icon
-                // on the keyboard triggers system dictation automatically.
-                TextField("Tap mic or type...", text: $commandText)
-                    .font(.system(size: 15, design: .monospaced))
-                    .foregroundColor(Theme.Text.primary)
-                    .textFieldStyle(.plain)
-                    .focused($isTextFieldFocused)
-                    .onSubmit {
-                        sendCommand()
-                    }
+                // Prompt input row.
+                HStack(spacing: 6) {
+                    Text("\u{276F}") // ❯
+                        .font(.system(.footnote, design: .monospaced).weight(.bold))
+                        .foregroundStyle(Palette.accent)
 
-                if !commandText.isEmpty {
-                    // Send button
-                    Button {
-                        sendCommand()
-                    } label: {
+                    TextField("tap mic or type", text: $commandText)
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(Palette.textPrimary)
+                        .tint(Palette.accent)
+                        .textFieldStyle(.plain)
+                        .focused($isTextFieldFocused)
+                        .onSubmit { sendCommand() }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
+                .background(Palette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(isTextFieldFocused ? Palette.accent : Palette.border,
+                                lineWidth: isTextFieldFocused ? 1.5 : 1)
+                )
+
+                if !commandText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button { sendCommand() } label: {
                         Text("Send")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white)
+                            .font(.system(.footnote, design: .default).weight(.semibold))
+                            .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Theme.Text.primary)
-                            )
+                            .background(Palette.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
 
-                Button {
-                    dismiss()
-                } label: {
+                Button { dismiss() } label: {
                     Text("Cancel")
-                        .font(.system(size: 13))
-                        .foregroundColor(Theme.Text.secondary)
+                        .font(.system(.caption))
+                        .foregroundStyle(Palette.textSecondary)
+                        .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
         }
-        .onAppear {
-            // Auto-focus the text field to bring up keyboard/dictation
-            isTextFieldFocused = true
-        }
-    }
-
-    private func barHeight(for index: Int) -> CGFloat {
-        let base: CGFloat = 12
-        let variation: CGFloat = 20
-        let phase = animationPhase + CGFloat(index) * 2
-        return base + abs(sin(phase * 0.3)) * variation
+        .background(Palette.watchBg.ignoresSafeArea())
+        .onAppear { isTextFieldFocused = true }
     }
 
     private func sendCommand() {
         let text = commandText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-
         HapticManager.commandSent()
         session.sendVoiceCommand(text, sessionId: sessionId)
         dismiss()
     }
 }
-
-// MARK: - Preview
 
 #Preview {
     VoiceInputView()

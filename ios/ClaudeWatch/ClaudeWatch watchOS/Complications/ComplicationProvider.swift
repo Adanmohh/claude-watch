@@ -16,9 +16,9 @@ struct ClaudeWatchEntry: TimelineEntry {
 
         var color: Color {
             switch self {
-            case .idle: return Theme.Text.secondary
-            case .running: return Theme.Accent.success
-            case .offline: return Theme.Accent.error
+            case .idle: return Palette.accent
+            case .running: return Palette.success
+            case .offline: return Palette.danger
             }
         }
     }
@@ -82,33 +82,20 @@ struct ClaudeWatchRectangularView: View {
     let entry: ClaudeWatchEntry
 
     var body: some View {
-        HStack(spacing: 6) {
-            // Mini mascot
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Theme.Text.primary)
-                .frame(width: 16, height: 16)
-                .overlay(
-                    Text("C")
-                        .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundColor(.black)
-                )
+        HStack(spacing: 8) {
+            // Signature block glyph, colored by session state.
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(entry.status.color)
+                .frame(width: 8, height: 18)
 
             VStack(alignment: .leading, spacing: 2) {
-                // Status line
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(entry.status.color)
-                        .frame(width: 6, height: 6)
+                Text(entry.status.rawValue)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(entry.status.color)
 
-                    Text(entry.status.rawValue)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(entry.status.color)
-                }
-
-                // Last output line
                 Text(entry.lastOutputLine)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Theme.Text.primary)
+                    .foregroundColor(Palette.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -129,7 +116,7 @@ struct ClaudeWatchComplication: Widget {
             ClaudeWatchRectangularView(entry: entry)
                 .containerBackground(Theme.Background.primary, for: .widget)
         }
-        .configurationDisplayName("Agent Watch")
+        .configurationDisplayName("ClaudeWatch")
         .description("Shows Claude session status and latest output.")
         .supportedFamilies([.accessoryRectangular])
     }

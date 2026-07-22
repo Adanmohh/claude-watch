@@ -15,105 +15,142 @@ struct OnboardingView: View {
     @FocusState private var addressFocused: Bool
 
     var body: some View {
-        VStack(spacing: 6) {
-            // Compact header — one line
-            HStack(spacing: 4) {
-                AppLogo(size: 22)
-                Text("Agent Watch")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Theme.Text.primary)
-            }
+        ScrollView {
+            VStack(spacing: 8) {
+                header
 
-            if isSearching {
-                Spacer()
-                ProgressView()
-                    .tint(Theme.Text.secondary)
-                Text("Connecting...")
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.Text.secondary)
-                Spacer()
-
-            } else if bridgeURL != nil && !manualEntry {
-                // Bridge found (LAN or remote) — code entry
-                Text("Enter code from Mac")
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.Text.secondary)
-
-                TextField("000000", text: $code)
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.Text.primary)
-                    .multilineTextAlignment(.center)
-                    .textContentType(.oneTimeCode)
-                    .focused($codeFocused)
-                    .onChange(of: code) { _, newValue in
-                        let filtered = String(newValue.filter { $0.isNumber }.prefix(6))
-                        if filtered != newValue { code = filtered }
-                        if filtered.count == 6 { submitCode(filtered) }
-                    }
-
-                if isConnecting {
-                    ProgressView()
-                        .tint(Theme.Text.primary)
-                        .scaleEffect(0.7)
+                if isSearching {
+                    searching
+                } else if bridgeURL != nil && !manualEntry {
+                    codeEntry
+                } else {
+                    manualEntryView
                 }
 
-                Button("Use a different server") {
-                    bridgeURL = nil
-                    manualEntry = true
-                    code = ""
-                    addressFocused = true
+                if let error {
+                    Text(error)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(Palette.danger)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .font(.system(size: 10))
-                .foregroundColor(Theme.Text.secondary)
-
-            } else {
-                // Manual entry — LAN IP or full remote URL (first-class)
-                Text("Enter server address")
-                    .font(.system(size: 11))
-                    .foregroundColor(Theme.Text.secondary)
-
-                Text("LAN IP or https://host:port")
-                    .font(.system(size: 9))
-                    .foregroundColor(Theme.Text.dimmed)
-
-                TextField("IP or https://host:port", text: $serverAddress)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundColor(Theme.Text.primary)
-                    .multilineTextAlignment(.center)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($addressFocused)
-
-                Button { connectManual() } label: {
-                    Text("Connect")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background(Theme.Text.primary)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                .disabled(serverAddress.isEmpty)
-
-                Button("Search LAN automatically") { searchForBridge() }
-                    .font(.system(size: 10))
-                    .foregroundColor(Theme.Text.secondary)
             }
-
-            if let error {
-                Text(error)
-                    .font(.system(size: 10))
-                    .foregroundColor(Theme.Accent.error)
-                    .lineLimit(2)
-            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.Background.primary)
-        .onAppear {
-            searchForBridge()
+        .background(Palette.watchBg.ignoresSafeArea())
+        .onAppear { searchForBridge() }
+    }
+
+    // MARK: - Sections
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            BlockCursor(mode: isSearching ? .working : (bridgeURL != nil ? .idle : .pending),
+                        width: 8, height: 15)
+            Text("ClaudeWatch")
+                .font(.system(.caption, design: .default).weight(.semibold))
+                .foregroundStyle(Palette.textPrimary)
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, 2)
+    }
+
+    private var searching: some View {
+        VStack(spacing: 8) {
+            Spacer(minLength: 12)
+            ProgressView().tint(Palette.accent)
+            Text("connecting")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(Palette.textDim)
+            Spacer(minLength: 12)
+        }
+    }
+
+    private var codeEntry: some View {
+        VStack(spacing: 8) {
+            Text("Enter code from Mac")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(Palette.textDim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField("000000", text: $code)
+                .font(.system(size: 24, weight: .bold, design: .monospaced))
+                .foregroundStyle(Palette.accent)
+                .multilineTextAlignment(.center)
+                .textContentType(.oneTimeCode)
+                .focused($codeFocused)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(Palette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(codeFocused ? Palette.accent : Palette.border,
+                                lineWidth: codeFocused ? 1.5 : 1)
+                )
+                .onChange(of: code) { _, newValue in
+                    let filtered = String(newValue.filter { $0.isNumber }.prefix(6))
+                    if filtered != newValue { code = filtered }
+                    if filtered.count == 6 { submitCode(filtered) }
+                }
+
+            if isConnecting {
+                ProgressView().tint(Palette.accent).scaleEffect(0.7)
+            }
+
+            Button("Use a different server") {
+                bridgeURL = nil
+                manualEntry = true
+                code = ""
+                addressFocused = true
+            }
+            .font(.system(.caption2))
+            .foregroundStyle(Palette.textSecondary)
+        }
+    }
+
+    private var manualEntryView: some View {
+        VStack(spacing: 8) {
+            Text("Server address")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(Palette.textDim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField("IP or https://host:port", text: $serverAddress)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(Palette.textPrimary)
+                .tint(Palette.accent)
+                .multilineTextAlignment(.center)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($addressFocused)
+                .padding(.vertical, 9)
+                .padding(.horizontal, 8)
+                .background(Palette.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(addressFocused ? Palette.accent : Palette.border,
+                                lineWidth: addressFocused ? 1.5 : 1)
+                )
+
+            Button { connectManual() } label: {
+                Text("Connect")
+                    .font(.system(.footnote, design: .default).weight(.semibold))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(Palette.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(serverAddress.isEmpty)
+            .opacity(serverAddress.isEmpty ? 0.5 : 1)
+
+            Button("Search LAN automatically") { searchForBridge() }
+                .font(.system(.caption2))
+                .foregroundStyle(Palette.textSecondary)
         }
     }
 

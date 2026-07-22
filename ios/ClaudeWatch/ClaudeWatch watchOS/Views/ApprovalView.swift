@@ -10,80 +10,116 @@ struct ApprovalView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                // Question text
+            VStack(alignment: .leading, spacing: 10) {
+                header
+
                 if let question = request.question {
                     Text(question)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
+                        .font(.system(.footnote, design: .default).weight(.semibold))
+                        .foregroundStyle(Palette.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("Do you want to \(request.toolName.lowercased())?")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white)
                 }
 
-                // Action summary / header
                 if !request.actionSummary.isEmpty && request.actionSummary != request.toolName {
                     Text(request.actionSummary)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Theme.Accent.approval)
-                        .lineLimit(2)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Palette.accent)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Divider().background(Theme.Text.dimmed)
-
-                // Dynamic options from server
-                ForEach(Array(request.options.enumerated()), id: \.element.id) { index, option in
-                    Button {
-                        respond(option: option, index: index)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text("\(index + 1).")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(Theme.Text.secondary)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(option.label)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(2)
-
-                                if let desc = option.description, !desc.isEmpty {
-                                    Text(desc)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(Theme.Text.secondary)
-                                        .lineLimit(2)
-                                }
-                            }
-
-                            Spacer()
-                        }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 8)
-                        .background(colorForOption(index).opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(colorForOption(index).opacity(0.4), lineWidth: 1)
-                        )
+                VStack(spacing: 6) {
+                    ForEach(Array(request.options.enumerated()), id: \.element.id) { index, option in
+                        optionButton(option, index: index)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(hasResponded)
                 }
+                .padding(.top, 2)
             }
-            .padding(.horizontal, 6)
-            .padding(.top, 4)
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
         }
-        .background(Theme.Background.primary)
+        .background(Palette.watchBg.ignoresSafeArea())
     }
 
-    private func colorForOption(_ index: Int) -> Color {
-        // First option: green, last option: red, middle: orange
-        if request.options.count <= 1 { return Theme.Accent.success }
-        if index == 0 { return Theme.Accent.success }
-        if index == request.options.count - 1 { return Theme.Accent.error }
-        return Theme.Text.primary
+    private var header: some View {
+        HStack(spacing: 6) {
+            BlockCursor(mode: .pending, width: 8, height: 15)
+            Text(request.question != nil ? "Question" : "Permission")
+                .font(.system(.caption, design: .default).weight(.semibold))
+                .foregroundStyle(Palette.textPrimary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private func optionButton(_ option: ApprovalRequest.OptionItem, index: Int) -> some View {
+        let role = role(for: index)
+        Button {
+            respond(option: option, index: index)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.label)
+                    .font(.system(.footnote, design: .default).weight(.semibold))
+                    .foregroundStyle(role.textColor)
+                    .lineLimit(2)
+                if let desc = option.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(.caption2))
+                        .foregroundStyle(Palette.textDim)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(role.fill)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(role.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(hasResponded)
+        .accessibilityLabel(option.label)
+    }
+
+    // MARK: - Button role styling
+
+    private enum Role {
+        case allow, deny, neutral
+        var fill: Color {
+            switch self {
+            case .allow:   return Palette.accent
+            case .deny:    return Palette.surface
+            case .neutral: return Palette.surface
+            }
+        }
+        var stroke: Color {
+            switch self {
+            case .allow:   return .clear
+            case .deny:    return Palette.danger.opacity(0.6)
+            case .neutral: return Palette.border
+            }
+        }
+        var textColor: Color {
+            switch self {
+            case .allow:   return Color.black
+            case .deny:    return Palette.danger
+            case .neutral: return Palette.textPrimary
+            }
+        }
+    }
+
+    private func role(for index: Int) -> Role {
+        // Free-form question options are neutral choices.
+        if request.question != nil { return index == 0 ? .allow : .neutral }
+        if request.options.count <= 1 { return .allow }
+        if index == 0 { return .allow }
+        if index == request.options.count - 1 { return .deny }
+        return .neutral
     }
 
     private func respond(option: ApprovalRequest.OptionItem, index: Int) {
@@ -93,8 +129,6 @@ struct ApprovalView: View {
         let isLast = index == request.options.count - 1
         WKInterfaceDevice.current().play(isLast ? .failure : .success)
 
-        // For AskUserQuestion: send the option label
-        // For permission prompts: first = allow, last = deny
         if request.question != nil {
             session.respondToPermissionWithOption(option.label, index: index)
         } else {
@@ -111,13 +145,13 @@ struct ApprovalView: View {
 #Preview {
     ApprovalView(
         request: ApprovalRequest(
-            toolName: "AskUserQuestion",
-            actionSummary: "Goal",
-            question: "Before we dig in — what's your goal with this?",
+            toolName: "Edit",
+            actionSummary: "Edit server.js",
+            question: nil,
             options: [
-                .init(label: "Building a startup", description: "You're building a company"),
-                .init(label: "Hackathon / fun", description: "Time-boxed project"),
-                .init(label: "Open source", description: "Building for a community"),
+                .init(label: "Yes"),
+                .init(label: "Yes, allow all"),
+                .init(label: "No"),
             ]
         )
     )
