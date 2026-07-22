@@ -51,8 +51,10 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         SUPPORTS_MACCATALYST: false
         DEVELOPMENT_TEAM: W25WJD2YZW
-        ARCHS: "arm64 arm64e arm64_32"
-        "EXCLUDED_ARCHS[sdk=watchsimulator*]": arm64e
+        # watchOS distribution supports only arm64 / arm64_32 (no arm64e).
+        # Rely on ARCHS_STANDARD so device archives get arm64 + arm64_32 and
+        # simulators resolve correctly; arm64e is never built.
+        ARCHS: "$(ARCHS_STANDARD)"
       configs:
         Release:
           CODE_SIGN_STYLE: Manual
