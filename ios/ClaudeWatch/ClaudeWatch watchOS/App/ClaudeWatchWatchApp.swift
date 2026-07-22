@@ -2,23 +2,25 @@ import SwiftUI
 
 // MARK: - Design Tokens (watchOS)
 
+// Legacy token namespace, repointed onto the centralized `Palette`
+// (named colors in Assets.xcassets). New code should use `Palette` directly.
 enum Theme {
     enum Background {
-        static let primary = Color(hex: "000000")
-        static let capture = Color(hex: "1a2233")
-        static let overlay = Color(hex: "1a1a1a")
+        static let primary = Palette.watchBg
+        static let capture = Palette.surface
+        static let overlay = Palette.surface
     }
 
     enum Text {
-        static let primary = Color(hex: "E87A35")
-        static let secondary = Color(hex: "666666")
-        static let dimmed = Color(hex: "555555")
+        static let primary = Palette.textPrimary
+        static let secondary = Palette.textSecondary
+        static let dimmed = Palette.textDim
     }
 
     enum Accent {
-        static let success = Color(hex: "34C759")
-        static let error = Color(hex: "FF3B30")
-        static let approval = Color(hex: "E8A735")
+        static let success = Palette.success
+        static let error = Palette.danger
+        static let approval = Palette.accent
     }
 }
 
