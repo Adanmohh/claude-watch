@@ -28,6 +28,7 @@ targets:
         PRODUCT_NAME: ClaudeWatch
         GENERATE_INFOPLIST_FILE: false
         DEVELOPMENT_TEAM: W25WJD2YZW
+        TARGETED_DEVICE_FAMILY: "1"
       configs:
         Release:
           CODE_SIGN_STYLE: Manual
