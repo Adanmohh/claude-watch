@@ -1494,11 +1494,24 @@ terminalWss.on("connection", (ws) => {
 
   // Grouped session: `-A` attaches to `phone` if it already exists, otherwise
   // creates it grouped with `claude` (`-t`), sharing windows/content but with
-  // its own dimensions. Killing `phone` later never touches `claude`.
+  // its own session. Killing `phone` later never touches `claude`.
+  //
+  // window-size: a window shared by grouped sessions has a single grid, so with
+  // the default `latest` the most-recently-active client wins — the phone typing
+  // would reflow (shrink) the laptop's view. We set the PHONE session to
+  // `largest`, so the shared window tracks the LARGEST attached client (the
+  // laptop): the laptop is never shrunk by the phone. The tradeoff is the phone
+  // renders the laptop-sized grid (SwiftTerm scrolls/fits it) rather than its
+  // own smaller size — acceptable since not disrupting the laptop is the
+  // priority. aggressive-resize stays OFF (default): the manpage notes it is
+  // "poor for interactive programs such as shells", which the Claude TUI is.
+  // The `;` is a literal tmux command separator, so set-option runs against the
+  // freshly created `phone` session in the same invocation.
   let ptyProcess;
   try {
     ptyProcess = pty.spawn("tmux", [
       "new-session", "-A", "-t", TMUX_SESSION, "-s", TERMINAL_GROUP_MEMBER,
+      ";", "set-option", "-t", TERMINAL_GROUP_MEMBER, "window-size", "largest",
     ], {
       name: "xterm-256color",
       cols: 80,
