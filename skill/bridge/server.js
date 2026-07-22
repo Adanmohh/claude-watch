@@ -103,7 +103,7 @@ let bridgeState = "idle";
 
 // Multi-session: each entry is a session slot
 // { id, agent, cwd, folderName, ptyProcess, state, createdAt }
-/** @type {Map<string, {id: string, agent: string, cwd: string, folderName: string, ptyProcess: import("child_process").ChildProcess | null, state: string, createdAt: number}>} */
+/** @type {Map<string, {id: string, agent: string, cwd: string, folderName: string, ptyProcess: import("node-pty").IPty | null, state: string, createdAt: number}>} */
 const sessions = new Map();
 
 // SSE
@@ -297,7 +297,13 @@ function spawnInteractiveProcess(agent, cwd, args = []) {
   const cols = parseInt(process.env.COLUMNS, 10) || 120;
   const rows = parseInt(process.env.LINES, 10) || 40;
 
-  return childSpawn("script", ["-q", "/dev/null", bin, ...args], {
+  // Use node-pty for a real PTY. (The previous `script -q /dev/null <bin>` hack
+  // only worked with BSD script; util-linux `script` on the VPS rejects the
+  // trailing-command form, which broke spawned sessions.)
+  return pty.spawn(bin, args, {
+    name: "xterm-256color",
+    cols,
+    rows,
     cwd,
     env: {
       ...process.env,
@@ -305,7 +311,6 @@ function spawnInteractiveProcess(agent, cwd, args = []) {
       COLUMNS: String(cols),
       LINES: String(rows),
     },
-    stdio: ["pipe", "pipe", "pipe"],
   });
 }
 
@@ -313,28 +318,17 @@ function bindPtyProcess(slot, proc) {
   const sessionId = slot.id;
   slot.ptyProcess = proc;
 
-  proc.stdout.on("data", (data) => {
+  // node-pty merges stdout/stderr into a single onData stream.
+  proc.onData((data) => {
     pushSseEvent("pty-output", { text: data.toString() }, sessionId);
   });
 
-  proc.stderr.on("data", (data) => {
-    pushSseEvent("pty-output", { text: data.toString() }, sessionId);
-  });
-
-  proc.on("close", (exitCode, signal) => {
+  proc.onExit(({ exitCode, signal }) => {
     log("info", `Session ${sessionId} (${slot.agent}) PTY exited: code=${exitCode} signal=${signal}`);
     slot.state = "ended";
     slot.ptyProcess = null;
     clearCodexSyntheticPermissionForSession(sessionId, "pty-closed");
     pushSseEvent("session", { state: "ended", exitCode, signal, agent: slot.agent, folderName: slot.folderName }, sessionId);
-  });
-
-  proc.on("error", (err) => {
-    log("error", `Session ${sessionId} PTY spawn error: ${err.message}`);
-    slot.state = "ended";
-    slot.ptyProcess = null;
-    clearCodexSyntheticPermissionForSession(sessionId, "pty-error");
-    pushSseEvent("session", { state: "ended", error: err.message, agent: slot.agent, folderName: slot.folderName }, sessionId);
   });
 }
 
@@ -700,7 +694,7 @@ function resolveCodexSyntheticPermission(permissionId, selectedOption, optionInd
   if (!slot) return false;
 
   const proc = slot.ptyProcess || attachPtyToSession(slot);
-  if (!proc || !proc.stdin) return false;
+  if (!proc) return false;
 
   let input = "\u001b";
   const normalizedIndex = Number.isInteger(optionIndex) ? optionIndex : -1;
@@ -714,7 +708,7 @@ function resolveCodexSyntheticPermission(permissionId, selectedOption, optionInd
     input = "2\n";
   }
 
-  proc.stdin.write(input);
+  proc.write(input);
   clearCodexSyntheticPermissionForSession(synthetic.sessionId, "resolved");
   log("info", `Resolved Codex approval ${permissionId} for session ${synthetic.sessionId}`);
   return true;
@@ -1186,7 +1180,7 @@ async function handleCommand(req, res) {
       const slot = sessions.get(newId);
       setTimeout(() => {
         if (slot && slot.ptyProcess) {
-          slot.ptyProcess.stdin.write(command);
+          slot.ptyProcess.write(command);
           log("info", `Command injected into new ${requestedAgent} session ${newId} (${command.length} chars)`);
         }
       }, 500);
@@ -1194,7 +1188,7 @@ async function handleCommand(req, res) {
     }
 
     try {
-      targetSession.ptyProcess.stdin.write(command);
+      targetSession.ptyProcess.write(command);
       log("info", `Command injected into session ${targetSession.id} (${command.length} chars)`);
       return jsonResponse(res, 200, { ok: true, sessionId: targetSession.id, agent: targetSession.agent });
     } catch (err) {
