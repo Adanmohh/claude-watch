@@ -5,6 +5,7 @@ struct SessionView: View {
     @EnvironmentObject private var session: WatchViewState
 
     @State private var showVoiceInput = false
+    @State private var showNewSession = false
 
     private var agentSession: AgentSession {
         guard session.sessions.indices.contains(sessionIndex) else {
@@ -35,6 +36,9 @@ struct SessionView: View {
         .fullScreenCover(isPresented: $showVoiceInput) {
             VoiceInputView(sessionId: agentSession.id)
         }
+        .sheet(isPresented: $showNewSession) {
+            NewSessionView()
+        }
     }
 
     // MARK: - Status header
@@ -49,6 +53,16 @@ struct SessionView: View {
                 .lineLimit(1)
 
             Spacer(minLength: 4)
+
+            Button {
+                showNewSession = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New session")
 
             Button {
                 session.clearTerminal(sessionId: agentSession.id)

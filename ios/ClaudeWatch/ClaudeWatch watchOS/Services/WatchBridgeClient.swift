@@ -96,6 +96,33 @@ class WatchBridgeClient: ObservableObject {
         return [BridgeEvent(state: status.state, hasPty: status.hasPty)]
     }
 
+    /// Default working directory for newly spawned sessions.
+    static let defaultCwd = "/home/adan/work"
+
+    /// Spawns a new agent session on the bridge. Returns the new session id.
+    /// The session's feed then arrives via the SSE stream.
+    @discardableResult
+    func spawnSession(agent: String, cwd: String = WatchBridgeClient.defaultCwd) async throws -> String {
+        guard let baseURL, let token else { throw BridgeError.notPaired }
+        let url = baseURL.appendingPathComponent("command")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        var body: [String: Any] = ["spawn": agent]
+        let trimmed = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { body["cwd"] = trimmed }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw BridgeError.network
+        }
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return json?["sessionId"] as? String ?? ""
+    }
+
     func unpair() {
         token = nil
         baseURL = nil
