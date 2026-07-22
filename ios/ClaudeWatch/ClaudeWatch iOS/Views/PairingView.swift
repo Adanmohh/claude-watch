@@ -20,12 +20,12 @@ struct PairingView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Palette.bg.ignoresSafeArea()
 
             VStack(spacing: 24) {
                 Spacer()
 
-                mascotIcon
+                header
                 titleSection
 
                 if showManualIP {
@@ -44,45 +44,44 @@ struct PairingView: View {
 
     // MARK: - Subviews
 
-    private var mascotIcon: some View {
-        AppLogo(size: 88)
+    private var header: some View {
+        HStack(spacing: 12) {
+            BlockCursor(mode: isConnecting ? .working : .idle, width: 12, height: 22)
+            Text("ClaudeWatch")
+                .font(.ledgerTitle(28))
+                .tracking(-0.5)
+                .foregroundStyle(Palette.textPrimary)
+        }
     }
 
     private var titleSection: some View {
-        VStack(spacing: 8) {
-            Text("Agent Watch")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(Color.claudeOrange)
-
-            Text(showManualIP
-                 ? "Enter your server address and the pairing code"
-                 : "Enter the pairing code from your Mac")
-                .font(.system(size: 15))
-                .foregroundStyle(Color.subtleText)
-                .multilineTextAlignment(.center)
-        }
+        Text(showManualIP
+             ? "Enter your server address and the pairing code"
+             : "Enter the pairing code from your Mac")
+            .font(.system(.subheadline))
+            .foregroundStyle(Palette.textSecondary)
+            .multilineTextAlignment(.center)
     }
 
     private var ipEntrySection: some View {
-        HStack(spacing: 8) {
-            TextField("IP or https://host:port", text: $ipAddress)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
-                .tint(Color.claudeOrange)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.fieldBorder, lineWidth: 1)
-                )
-                .focused($isIPFocused)
-        }
+        TextField("IP or https://host:port", text: $ipAddress)
+            .keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+            .foregroundStyle(Palette.textPrimary)
+            .tint(Palette.accent)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isIPFocused ? Palette.accent : Palette.border,
+                            lineWidth: isIPFocused ? 1.5 : 1)
+            )
+            .focused($isIPFocused)
     }
 
     private var digitFields: some View {
@@ -130,16 +129,16 @@ struct PairingView: View {
         if isConnecting {
             HStack(spacing: 8) {
                 ProgressView()
-                    .tint(Color.claudeOrange)
-                Text("Connecting to Mac...")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.subtleText)
+                    .tint(Palette.accent)
+                Text("Connecting…")
+                    .font(.system(.subheadline))
+                    .foregroundStyle(Palette.textSecondary)
             }
             .padding(.top, 4)
         } else if showError {
             Text(errorMessage)
-                .font(.system(size: 14))
-                .foregroundStyle(errorMessage.contains("expired") ? Color.claudeAmber : .red)
+                .font(.system(.footnote))
+                .foregroundStyle(errorMessage.contains("expired") ? Palette.accent : Palette.danger)
                 .multilineTextAlignment(.center)
                 .transition(.opacity)
                 .padding(.top, 4)
@@ -156,14 +155,14 @@ struct PairingView: View {
                     }
                 } label: {
                     Text("Enter IP or remote server URL")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.claudeOrange)
+                        .font(.system(.footnote))
+                        .foregroundStyle(Palette.accent)
                 }
             }
 
             Text("Run `node server.js` in the bridge folder to start")
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(Color.subtleText)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(Palette.textDim)
                 .multilineTextAlignment(.center)
         }
         .padding(.bottom, 16)
@@ -224,7 +223,6 @@ struct PairingView: View {
             } catch {
                 await MainActor.run {
                     let msg = error.localizedDescription
-                    // If auto-discovery failed, suggest manual IP
                     if msg.contains("noServiceFound") || msg.contains("timed out") || msg.contains("not found") {
                         showManualIP = true
                         showPairingError("Bridge not found automatically. Enter your Mac's IP address.")
@@ -252,7 +250,7 @@ struct PairingView: View {
                 showPairingError("Can't reach bridge. Enter your Mac's IP address.")
                 isIPFocused = true
             } else {
-                showPairingError("Cannot reach the bridge server. Check the IP and network.")
+                showPairingError("Cannot reach the bridge server. Check the address and network.")
             }
         case .serverError(let msg):
             showPairingError(msg)
@@ -297,14 +295,14 @@ private struct DigitBox: View {
     var body: some View {
         Text(character.map(String.init) ?? "")
             .font(.system(size: 28, weight: .bold, design: .monospaced))
-            .foregroundStyle(isError ? .red : Color.claudeOrange)
-            .frame(width: 48, height: 56)
-            .background(Color.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .foregroundStyle(isError ? Palette.danger : Palette.accent)
+            .frame(width: 46, height: 56)
+            .background(Palette.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(
-                        isError ? .red : (isActive ? Color.claudeOrange : Color.fieldBorder),
+                        isError ? Palette.danger : (isActive ? Palette.accent : Palette.border),
                         lineWidth: isActive ? 2 : 1
                     )
             )

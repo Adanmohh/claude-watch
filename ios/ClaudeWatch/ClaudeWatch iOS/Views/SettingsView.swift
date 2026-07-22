@@ -17,7 +17,7 @@ struct SettingsView: View {
                 aboutSection
             }
             .scrollContentBackground(.hidden)
-            .background(Color.black)
+            .background(Palette.bg.ignoresSafeArea())
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -25,7 +25,7 @@ struct SettingsView: View {
                     Button("Done") {
                         dismiss()
                     }
-                    .foregroundStyle(Color.claudeOrange)
+                    .foregroundStyle(Palette.accent)
                 }
             }
             .alert("Forget Mac?", isPresented: $showForgetConfirmation) {
@@ -38,6 +38,7 @@ struct SettingsView: View {
                 Text("You will need to re-pair with a new code from Claude Code.")
             }
         }
+        .tint(Palette.accent)
     }
 
     // MARK: - Sections
@@ -48,24 +49,31 @@ struct SettingsView: View {
                 Text("Auto").tag(ConnectionMode.auto)
                 Text("LAN Only").tag(ConnectionMode.lanOnly)
             }
+            .foregroundStyle(Palette.textPrimary)
         } header: {
             Text("Connection")
+                .foregroundStyle(Palette.textDim)
         } footer: {
-            Text("Auto discovers the bridge via Bonjour on your local network.")
+            Text("Auto discovers the bridge via Bonjour on your local network. Remote servers are reached by URL.")
+                .foregroundStyle(Palette.textDim)
         }
+        .listRowBackground(Palette.surface)
     }
 
     private var pairedMacSection: some View {
-        Section("Paired Mac") {
+        Section {
             if relayService.isPaired {
-                HStack {
+                HStack(spacing: 10) {
+                    BlockCursor(mode: relayService.connectionState == .connected ? .idle : .offline,
+                                width: 6, height: 16)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(relayService.machineName ?? "Unknown Mac")
-                            .foregroundStyle(.white)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(Palette.textPrimary)
                         if let lastConnected = relayService.lastConnected {
                             Text("Last connected \(lastConnected, style: .relative) ago")
                                 .font(.caption)
-                                .foregroundStyle(Color.subtleText)
+                                .foregroundStyle(Palette.textSecondary)
                         }
                     }
                     Spacer()
@@ -74,33 +82,44 @@ struct SettingsView: View {
                 Button("Forget This Mac", role: .destructive) {
                     showForgetConfirmation = true
                 }
+                .foregroundStyle(Palette.danger)
             } else {
                 Text("No Mac paired")
-                    .foregroundStyle(Color.subtleText)
+                    .foregroundStyle(Palette.textSecondary)
             }
+        } header: {
+            Text("Paired Mac")
+                .foregroundStyle(Palette.textDim)
         }
+        .listRowBackground(Palette.surface)
     }
 
     private var aboutSection: some View {
-        Section("About") {
+        Section {
             HStack {
                 Text("Version")
+                    .foregroundStyle(Palette.textPrimary)
                 Spacer()
-                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0")
-                    .foregroundStyle(Color.subtleText)
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(Palette.textSecondary)
             }
 
             Link(destination: URL(string: "https://github.com/anthropics/claude-code")!) {
                 HStack {
                     Text("Claude Code")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Palette.textPrimary)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption)
-                        .foregroundStyle(Color.subtleText)
+                        .foregroundStyle(Palette.textSecondary)
                 }
             }
+        } header: {
+            Text("About")
+                .foregroundStyle(Palette.textDim)
         }
+        .listRowBackground(Palette.surface)
     }
 }
 

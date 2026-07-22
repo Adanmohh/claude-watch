@@ -5,7 +5,6 @@ struct ConnectionStatusView: View {
 
     @EnvironmentObject private var relayService: RelayService
     @EnvironmentObject private var sessionManager: WatchSessionManager
-    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showSettings = false
     @State private var activeSessionIndex = 0
@@ -13,41 +12,18 @@ struct ConnectionStatusView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                Palette.bg.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    header
+                    topBar
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, 10)
 
                     if relayService.sessions.isEmpty {
                         waitingView
                     } else {
-                        ZStack(alignment: .bottomLeading) {
-                            sessionPager
-
-                            // Floating clear button — outside TabView to avoid swipe conflicts
-                            Button {
-                                let sessionId = relayService.sessions.indices.contains(activeSessionIndex)
-                                    ? relayService.sessions[activeSessionIndex].id
-                                    : nil
-                                relayService.clearTerminal(sessionId: sessionId)
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.subtleText.opacity(0.4))
-                                        .frame(width: 32, height: 32)
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.white)
-                                }
-                                .shadow(color: .black.opacity(0.5), radius: 4, y: 2)
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.leading, 26)
-                            .padding(.bottom, 16)
-                        }
+                        sessionPager
                     }
                 }
             }
@@ -58,8 +34,9 @@ struct ConnectionStatusView: View {
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
-                            .foregroundStyle(Color.subtleText)
+                            .foregroundStyle(Palette.textSecondary)
                     }
+                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $showSettings) {
@@ -67,17 +44,17 @@ struct ConnectionStatusView: View {
                     .environmentObject(relayService)
             }
         }
+        .tint(Palette.accent)
     }
 
-    // MARK: - Header
+    // MARK: - Top bar
 
-    private var header: some View {
+    private var topBar: some View {
         HStack(spacing: 10) {
-            AppLogo(size: 28)
-
-            Text("Agent Watch")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.white)
+            Text("ClaudeWatch")
+                .font(.ledgerTitle(20))
+                .tracking(-0.5)
+                .foregroundStyle(Palette.textPrimary)
 
             Spacer()
 
@@ -86,36 +63,45 @@ struct ConnectionStatusView: View {
     }
 
     private var connectionBadge: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(Color.statusGreen)
+        let (label, color): (String, Color) = {
+            switch relayService.connectionState {
+            case .connected:        return ("CONNECTED", Palette.success)
+            case .connecting:       return ("CONNECTING", Palette.accent)
+            case .disconnected:     return ("OFFLINE", Palette.danger)
+            case .iPhoneUnreachable:return ("UNREACHABLE", Palette.accent)
+            }
+        }()
+        return HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(color)
                 .frame(width: 6, height: 6)
-            Text("LAN")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.statusGreen)
+            Text(label)
+                .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                .foregroundStyle(color)
+                .tracking(0.5)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color.connectedPillBackground)
+        .padding(.vertical, 5)
+        .background(Palette.surface)
         .clipShape(Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Connection \(label.lowercased())")
     }
 
-    // MARK: - Waiting for sessions
+    // MARK: - Waiting (empty) state — a dim ledger, never blank.
 
     private var waitingView: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            AppLogo(size: 56)
-                .opacity(0.6)
-            Text("Waiting for session...")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.subtleText)
-            Text("Connected to \(relayService.machineName ?? "Mac")")
-                .font(.system(size: 13))
-                .foregroundStyle(Color.subtleText.opacity(0.6))
+        VStack(alignment: .leading, spacing: 10) {
+            LedgerWaitingRow(text: "waiting for session")
+            Text("Connected to \(relayService.machineName ?? "Mac"). Start Claude or Codex.")
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(Palette.textDim.opacity(0.7))
+                .padding(.leading, 28)
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 
     // MARK: - Session pager
@@ -131,20 +117,16 @@ struct ConnectionStatusView: View {
         .tabViewStyle(.page(indexDisplayMode: relayService.sessions.count > 1 ? .automatic : .never))
         .indexViewStyle(.page(backgroundDisplayMode: .interactive))
     }
-
 }
 
-// MARK: - Session Page View
+// MARK: - Session Page
 
 private struct SessionPageView: View {
     let sessionIndex: Int
     @EnvironmentObject private var relayService: RelayService
 
-    @State private var cursorVisible = true
     @State private var promptText = ""
     @FocusState private var isPromptFocused: Bool
-
-    private let cursorTimer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
     private var session: AgentSession {
         guard relayService.sessions.indices.contains(sessionIndex) else {
@@ -153,288 +135,295 @@ private struct SessionPageView: View {
         return relayService.sessions[sessionIndex]
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            // Session header
-            sessionHeader
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-
-            // Approval prompt (if pending for this session)
-            if let approval = session.pendingApproval {
-                approvalPrompt(approval)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
-            }
-
-            // Terminal
-            terminalView
-                .padding(.horizontal, 16)
-        }
+    private var cursorMode: BlockCursor.Mode {
+        if session.pendingApproval != nil { return .pending }
+        let connected = relayService.connectionState == .connected
+        return BlockCursor.Mode(activity: session.activity, connected: connected)
     }
 
-    // MARK: - Session header
+    var body: some View {
+        VStack(spacing: 0) {
+            statusHeader
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
 
-    private var sessionHeader: some View {
-        HStack(spacing: 8) {
-            AgentIcon(agent: session.agent, size: 18)
+            if let approval = session.pendingApproval {
+                PermissionCard(approval: approval) { label, index in
+                    relayService.respondToApprovalWithOption(label, index: index)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
+            }
 
-            Text(session.folderName.isEmpty ? session.agent.rawValue.capitalized : session.folderName)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
+            ledger
 
-            Text(session.cwd)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(Color.subtleText)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            promptRow
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: session.pendingApproval != nil)
+    }
+
+    // MARK: - Status header (with breathing cursor)
+
+    private var statusHeader: some View {
+        HStack(spacing: 10) {
+            BlockCursor(mode: cursorMode, width: 10, height: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.folderName.isEmpty ? session.agent.rawValue.capitalized : session.folderName)
+                    .font(.ledgerTitle(17))
+                    .tracking(-0.5)
+                    .foregroundStyle(Palette.textPrimary)
+                    .lineLimit(1)
+
+                if !session.cwd.isEmpty {
+                    Text(session.cwd)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(Palette.textDim)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
 
             Spacer()
 
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
+            Button {
+                relayService.clearTerminal(sessionId: session.id)
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Palette.textDim)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear feed")
         }
         .padding(12)
-        .background(Color.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private var statusColor: Color {
-        switch session.activity {
-        case .running: return Color.statusGreen
-        case .waitingApproval: return Color.claudeAmber
-        case .ended: return .red
-        case .idle: return Color.subtleText
-        }
-    }
-
-    // MARK: - Approval prompt
-
-    private func approvalPrompt(_ approval: ApprovalRequest) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let question = approval.question {
-                Text(question)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !approval.actionSummary.isEmpty && approval.actionSummary != approval.toolName {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Color.claudeAmber)
-                        .font(.system(size: 14))
-                    Text(approval.actionSummary)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                }
-            }
-
-            Divider().background(Color.subtleText.opacity(0.3))
-
-            ForEach(Array(approval.options.enumerated()), id: \.element.id) { index, option in
-                Button {
-                    relayService.respondToApprovalWithOption(option.label, index: index)
-                    promptText = ""
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("\(index + 1).")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(Color.subtleText)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(option.label)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-
-                            if let desc = option.description, !desc.isEmpty {
-                                Text(desc)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color.subtleText)
-                                    .lineLimit(2)
-                            }
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 12)
-                    .background(colorForOption(index, total: approval.options.count).opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(colorForOption(index, total: approval.options.count).opacity(0.3), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Text input for custom response
-            if approval.question != nil {
-                HStack(spacing: 8) {
-                    TextField("Type a response...", text: $promptText)
-                        .font(.system(size: 14, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .tint(Color.claudeOrange)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(Color.black.opacity(0.3))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .focused($isPromptFocused)
-                        .onSubmit { submitPromptText() }
-
-                    Button { submitPromptText() } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                ? Color.subtleText
-                                : Color.claudeOrange)
-                    }
-                    .disabled(promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .padding(12)
-        .background(Color(hex: "1a1a1a"))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .background(Palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.claudeAmber.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Palette.border, lineWidth: 1)
         )
     }
 
-    // MARK: - Terminal
+    // MARK: - Ledger feed
 
-    private var terminalView: some View {
+    private var ledger: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(session.terminalLines.suffix(50)) { line in
-                        TerminalLineRow(line: line)
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    if visibleLines.isEmpty {
+                        LedgerWaitingRow(text: "waiting for output")
+                            .padding(.top, 4)
+                    }
+
+                    ForEach(visibleLines) { line in
+                        LedgerRow(line: line)
                             .id(line.id)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
                     if relayService.isThinking {
-                        Text(cursorVisible ? "\u{2588}" : " ")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(Color.claudeOrange)
-                            .onReceive(cursorTimer) { _ in cursorVisible.toggle() }
-                            .id("thinking-cursor")
+                        HStack(spacing: 8) {
+                            BlockCursor(mode: .working, width: 6, height: 14)
+                            Text("working")
+                                .font(.system(.footnote, design: .monospaced))
+                                .foregroundStyle(Palette.textDim)
+                        }
+                        .padding(.leading, 4)
+                        .id("thinking-cursor")
                     }
                 }
-                .padding(12)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .animation(.easeOut(duration: 0.15), value: session.terminalLines.count)
             }
             .onChange(of: session.terminalLines.count) { _, _ in
                 withAnimation(.easeOut(duration: 0.15)) {
                     if relayService.isThinking {
                         proxy.scrollTo("thinking-cursor", anchor: .bottom)
-                    } else if let last = session.terminalLines.last {
+                    } else if let last = visibleLines.last {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .background(Color.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func submitPromptText() {
+    // MARK: - Prompt row
+
+    private var promptRow: some View {
+        HStack(spacing: 8) {
+            Text("\u{276F}") // ❯
+                .font(.system(.body, design: .monospaced).weight(.bold))
+                .foregroundStyle(Palette.accent)
+
+            TextField("Send a command…", text: $promptText)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(Palette.textPrimary)
+                .tint(Palette.accent)
+                .autocorrectionDisabled()
+                .focused($isPromptFocused)
+                .onSubmit(sendPrompt)
+
+            Button(action: sendPrompt) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(canSend ? Palette.accent : Palette.textDim)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSend)
+            .accessibilityLabel("Send command")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: 44)
+        .background(Palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isPromptFocused ? Palette.accent : Palette.border,
+                        lineWidth: isPromptFocused ? 1.5 : 1)
+        )
+    }
+
+    private var canSend: Bool {
+        !promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func sendPrompt() {
         let text = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        relayService.respondToApprovalWithOption(text, index: -1)
+        relayService.sendCommand(text: text, sessionId: session.id)
         promptText = ""
         isPromptFocused = false
     }
 
-    private func colorForOption(_ index: Int, total: Int) -> Color {
-        if total <= 1 { return Color.statusGreen }
-        if index == 0 { return Color.statusGreen }
-        if index == total - 1 { return .red }
-        return Color.claudeOrange
+    private var visibleLines: [TerminalLine] {
+        session.terminalLines
+            .filter { !$0.text.isEmpty && $0.type != .thinking }
+            .suffix(60)
+            .map { $0 }
     }
 }
 
-// MARK: - Terminal Line Row (collapsible)
+// MARK: - Permission card (interrupts the ledger)
 
-private struct TerminalLineRow: View {
-    let line: TerminalLine
-    @State private var isExpanded = false
-
-    private let truncateThreshold = 60
-
-    private var isLong: Bool {
-        line.text.count > truncateThreshold
-    }
-
-    private var displayText: String {
-        if isExpanded || !isLong {
-            return line.text
-        }
-        return String(line.text.prefix(truncateThreshold)) + "..."
-    }
-
-    private var icon: String? {
-        switch line.type {
-        case .command: return line.text.hasPrefix("$") ? nil : nil
-        case .system:
-            if line.text.hasPrefix("Read ")  { return "doc.text" }
-            if line.text.hasPrefix("Edit ")  { return "pencil" }
-            if line.text.hasPrefix("Write ") { return "doc.badge.plus" }
-            return "gearshape"
-        default: return nil
-        }
-    }
+private struct PermissionCard: View {
+    let approval: ApprovalRequest
+    let respond: (_ label: String, _ index: Int) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 4) {
-            if let icon, line.type == .system {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.subtleText)
-                    .frame(width: 14, alignment: .center)
-                    .padding(.top, 2)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                BlockCursor(mode: .pending, width: 8, height: 16)
+                Text(approval.question != nil ? "QUESTION" : "PERMISSION")
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(Palette.accent)
+                    .tracking(1)
+                Spacer()
             }
 
-            Text(displayText)
-                .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(colorForType)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if isLong {
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color.subtleText.opacity(0.6))
-                    .padding(.top, 3)
+            if let question = approval.question {
+                Text(question)
+                    .font(.system(.subheadline).weight(.semibold))
+                    .foregroundStyle(Palette.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if isLong {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isExpanded.toggle()
+
+            if !approval.actionSummary.isEmpty && approval.actionSummary != approval.toolName {
+                Text(approval.actionSummary)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(Palette.accent)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(Array(approval.options.enumerated()), id: \.element.id) { index, option in
+                    optionButton(option, index: index)
                 }
             }
         }
+        .padding(14)
+        .background(Palette.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Palette.accent.opacity(0.5), lineWidth: 1)
+        )
     }
 
-    private var colorForType: Color {
-        switch line.type {
-        case .output:
-            if line.text.hasPrefix("  + ") { return Color.statusGreen }
-            return Color.claudeOrange
-        case .command:  return .white
-        case .system:   return Color.subtleText
-        case .thinking: return Color.claudeOrange.opacity(0.5)
-        case .error:    return .red
+    @ViewBuilder
+    private func optionButton(_ option: ApprovalRequest.OptionItem, index: Int) -> some View {
+        let role = role(for: index)
+        Button {
+            let generator = UIImpactFeedbackGenerator(style: role == .allow ? .medium : .heavy)
+            generator.impactOccurred()
+            respond(option.label, index)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(option.label)
+                    .font(.system(.subheadline).weight(.semibold))
+                    .foregroundStyle(role.textColor)
+                if let desc = option.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.system(.caption))
+                        .foregroundStyle(Palette.textDim)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background(role.fill)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(role.stroke, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.label)
+    }
+
+    private enum Role {
+        case allow, deny, neutral
+        var fill: Color {
+            switch self {
+            case .allow:   return Palette.accent
+            case .deny, .neutral: return Palette.bg
+            }
+        }
+        var stroke: Color {
+            switch self {
+            case .allow:   return .clear
+            case .deny:    return Palette.danger.opacity(0.6)
+            case .neutral: return Palette.border
+            }
+        }
+        var textColor: Color {
+            switch self {
+            case .allow:   return .black
+            case .deny:    return Palette.danger
+            case .neutral: return Palette.textPrimary
+            }
         }
     }
-}
 
-// MARK: - Preview
+    private func role(for index: Int) -> Role {
+        if approval.question != nil { return index == 0 ? .allow : .neutral }
+        if approval.options.count <= 1 { return .allow }
+        if index == 0 { return .allow }
+        if index == approval.options.count - 1 { return .deny }
+        return .neutral
+    }
+}
 
 #Preview {
     ConnectionStatusView()
