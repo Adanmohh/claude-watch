@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftTerm
+import UIKit
 
 // MARK: - Terminal screen
 
@@ -104,12 +105,36 @@ private struct TerminalContainer: View {
                 keyButton("/") { sendChar("/") }
                 keyButton("|") { sendChar("|") }
                 keyButton("~") { sendChar("~") }
+                dismissKeyboardButton
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
         }
         .background(Palette.surface)
         .overlay(alignment: .top) { Rectangle().fill(Palette.border).frame(height: 0.5) }
+    }
+
+    // Hide the software keyboard. Tapping the terminal again brings it back
+    // (SwiftTerm becomes first responder on tap), so the terminal stays usable.
+    private var dismissKeyboardButton: some View {
+        Button {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+            )
+        } label: {
+            Image(systemName: "keyboard.chevron.compact.down")
+                .font(.system(size: 15))
+                .foregroundStyle(Palette.accent)
+                .frame(minWidth: 44, minHeight: 34)
+                .background(Palette.bg)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Palette.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Hide keyboard")
     }
 
     private func keyButton(_ label: String, highlighted: Bool = false, action: @escaping () -> Void) -> some View {
@@ -178,6 +203,9 @@ struct TerminalSurface: UIViewRepresentable {
         terminal.terminalDelegate = context.coordinator
         terminal.nativeBackgroundColor = UIColor(named: "BgBase") ?? .black
         terminal.nativeForegroundColor = UIColor(named: "TextPrimary") ?? .white
+        // Forward touch pans as mouse events so tmux mouse mode (enabled on the
+        // phone session by the bridge) handles drag-to-scroll of the live output.
+        terminal.allowMouseReporting = true
 
         // Feed pty bytes from the socket into the emulator.
         socket.onData = { [weak terminal] bytes in
