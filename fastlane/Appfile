@@ -1,0 +1,5 @@
+app_identifier("fi.neogrant.claudewatch")
+team_id("W25WJD2YZW")
+
+# App Store Connect authentication is handled via the App Store Connect API key
+# (app_store_connect_api_key) in the Fastfile, so no Apple ID is configured here.

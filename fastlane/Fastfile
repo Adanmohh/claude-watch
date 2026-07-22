@@ -1,0 +1,71 @@
+default_platform(:ios)
+
+# Bundle identifiers for the iOS container app and the embedded watchOS app.
+IOS_APP_ID   = "fi.neogrant.claudewatch"
+WATCH_APP_ID = "fi.neogrant.claudewatch.watchkitapp"
+
+# Paths (relative to the repo root, which is fastlane's working directory for actions).
+XCODE_PROJECT = "ios/ClaudeWatch/ClaudeWatch.xcodeproj"
+XCODE_SCHEME  = "ClaudeWatch"
+
+platform :ios do
+  desc "Build and upload the iOS app (with embedded watchOS app) to TestFlight"
+  lane :beta do
+    # Prepare an ephemeral keychain and switch match to a CI-friendly mode.
+    setup_ci
+
+    # Authenticate with App Store Connect using an API key.
+    # ASC_KEY_CONTENT holds the base64-encoded .p8 key.
+    app_store_connect_api_key(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      key_content: ENV["ASC_KEY_CONTENT"],
+      is_key_content_base64: true,
+      in_house: false
+    )
+
+    # Fetch (and create if missing) the App Store distribution certificate and
+    # provisioning profiles for both the app and the watch app. Config comes from
+    # fastlane/Matchfile (git_url, type: appstore, both app identifiers).
+    match(readonly: false)
+
+    # Compute the next build number from what's already on TestFlight.
+    # On the very first upload the app/train may not exist yet, so fall back to 0.
+    latest_build = begin
+      latest_testflight_build_number(app_identifier: IOS_APP_ID)
+    rescue => e
+      UI.important("Could not fetch latest TestFlight build number (#{e.message}); starting from 0.")
+      0
+    end
+    build_number = latest_build + 1
+    UI.message("Using build number #{build_number}")
+
+    # Regenerate the Xcode project from project.yml (xcodegen is not committed output).
+    sh("cd ../ios/ClaudeWatch && xcodegen generate")
+
+    # Build the iOS app scheme. It embeds the watchOS app, so a single archive
+    # produces both. CURRENT_PROJECT_VERSION drives CFBundleVersion for both targets.
+    gym(
+      project: XCODE_PROJECT,
+      scheme: XCODE_SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      output_directory: "build",
+      output_name: "ClaudeWatch.ipa",
+      xcargs: "CURRENT_PROJECT_VERSION=#{build_number}",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          IOS_APP_ID   => "match AppStore #{IOS_APP_ID}",
+          WATCH_APP_ID => "match AppStore #{WATCH_APP_ID}"
+        }
+      }
+    )
+
+    # Upload to TestFlight without blocking on Apple's processing.
+    pilot(
+      skip_waiting_for_build_processing: true,
+      app_identifier: IOS_APP_ID
+    )
+  end
+end

@@ -1,0 +1,12 @@
+git_url("https://github.com/Adanmohh/ios-certificates.git")
+storage_mode("git")
+
+type("appstore")
+
+app_identifier([
+  "fi.neogrant.claudewatch",
+  "fi.neogrant.claudewatch.watchkitapp"
+])
+
+# Non-interactive on CI: never prompt, fail fast if something is missing.
+readonly(false)

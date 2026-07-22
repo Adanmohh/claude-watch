@@ -16,3 +16,16 @@
 *.swp
 *.swo
 *~
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+*.ipa
+*.dSYM.zip
+*.mobileprovision
+*.p12
+
+# Secrets / local env
+.env
