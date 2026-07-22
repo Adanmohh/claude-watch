@@ -1534,11 +1534,18 @@ terminalWss.on("connection", (ws) => {
   // "poor for interactive programs such as shells", which the Claude TUI is.
   // The `;` is a literal tmux command separator, so set-option runs against the
   // freshly created `phone` session in the same invocation.
+  //
+  // mouse: enable tmux mouse mode for the phone session ONLY (it is a session
+  // option, so the laptop's `claude` session is unaffected). Claude Code runs on
+  // the alternate screen, which has no emulator scrollback; with mouse on, a
+  // finger drag in SwiftTerm is forwarded as a tmux mouse event, letting the
+  // user drag to enter copy-mode and scroll back through the live output.
   let ptyProcess;
   try {
     ptyProcess = pty.spawn("tmux", [
       "new-session", "-A", "-t", TMUX_SESSION, "-s", TERMINAL_GROUP_MEMBER,
       ";", "set-option", "-t", TERMINAL_GROUP_MEMBER, "window-size", "largest",
+      ";", "set-option", "-t", TERMINAL_GROUP_MEMBER, "mouse", "on",
     ], {
       name: "xterm-256color",
       cols: 80,
