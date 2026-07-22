@@ -33,6 +33,9 @@ final class RelayService: ObservableObject {
     // Permission prompt state (uses shared ApprovalRequest model)
     @Published var pendingApproval: ApprovalRequest? = nil
 
+    /// Session id we just spawned and want to switch to once it arrives via SSE.
+    @Published var pendingActivationSessionId: String? = nil
+
     // MARK: - Private
 
     private let bridgeClient = BridgeClient()
@@ -412,6 +415,29 @@ final class RelayService: ObservableObject {
         recentTerminalLines = terminalBuffer.getLast(15)
 
         clearPendingApproval(for: approval)
+    }
+
+    // MARK: - Spawn session
+
+    /// Default working directory for newly spawned sessions.
+    static let defaultCwd = "/home/adan/work"
+
+    /// Spawns a new agent session on the bridge. On success the bridge emits a
+    /// "session" running event over SSE; `pendingActivationSessionId` lets the
+    /// UI switch to it once it appears in `sessions`.
+    @discardableResult
+    func spawnSession(agent: String, cwd: String) async throws -> String {
+        let trimmed = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sessionId = try await bridgeClient.spawnSession(
+            agent: agent,
+            cwd: trimmed.isEmpty ? Self.defaultCwd : trimmed
+        )
+        pendingActivationSessionId = sessionId.isEmpty ? nil : sessionId
+        return sessionId
+    }
+
+    func clearPendingActivation() {
+        pendingActivationSessionId = nil
     }
 
     // MARK: - Send command

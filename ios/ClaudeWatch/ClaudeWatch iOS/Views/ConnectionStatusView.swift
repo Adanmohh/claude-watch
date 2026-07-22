@@ -7,6 +7,7 @@ struct ConnectionStatusView: View {
     @EnvironmentObject private var sessionManager: WatchSessionManager
 
     @State private var showSettings = false
+    @State private var showNewSession = false
     @State private var activeSessionIndex = 0
 
     var body: some View {
@@ -29,7 +30,15 @@ struct ConnectionStatusView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showNewSession = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .foregroundStyle(Palette.accent)
+                    }
+                    .accessibilityLabel("New session")
+
                     Button {
                         showSettings = true
                     } label: {
@@ -42,6 +51,17 @@ struct ConnectionStatusView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
                     .environmentObject(relayService)
+            }
+            .sheet(isPresented: $showNewSession) {
+                NewSessionSheet()
+                    .environmentObject(relayService)
+            }
+            .onChange(of: relayService.sessions.map(\.id)) { _, ids in
+                if let target = relayService.pendingActivationSessionId,
+                   let idx = ids.firstIndex(of: target) {
+                    activeSessionIndex = idx
+                    relayService.clearPendingActivation()
+                }
             }
         }
         .tint(Palette.accent)
@@ -97,6 +117,25 @@ struct ConnectionStatusView: View {
                 .font(.system(.footnote, design: .monospaced))
                 .foregroundStyle(Palette.textDim.opacity(0.7))
                 .padding(.leading, 28)
+
+            Button {
+                showNewSession = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus")
+                    Text("New Session")
+                        .font(.system(.subheadline).weight(.semibold))
+                }
+                .foregroundStyle(.black)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 20)
+                .background(Palette.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 28)
+            .padding(.top, 4)
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -422,6 +461,127 @@ private struct PermissionCard: View {
         if index == 0 { return .allow }
         if index == approval.options.count - 1 { return .deny }
         return .neutral
+    }
+}
+
+// MARK: - New session sheet
+
+private struct NewSessionSheet: View {
+    @EnvironmentObject private var relayService: RelayService
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var agent: AgentType = .claude
+    @State private var folder: String = RelayService.defaultCwd
+    @State private var isSpawning = false
+    @State private var error: String?
+    @FocusState private var folderFocused: Bool
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Palette.bg.ignoresSafeArea()
+
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 10) {
+                        BlockCursor(mode: isSpawning ? .working : .idle, width: 10, height: 18)
+                        Text("New Session")
+                            .font(.ledgerTitle(22))
+                            .tracking(-0.5)
+                            .foregroundStyle(Palette.textPrimary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("AGENT")
+                            .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                            .foregroundStyle(Palette.textDim)
+                            .tracking(1)
+                        Picker("Agent", selection: $agent) {
+                            Text("Claude").tag(AgentType.claude)
+                            Text("Codex").tag(AgentType.codex)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("FOLDER")
+                            .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                            .foregroundStyle(Palette.textDim)
+                            .tracking(1)
+                        TextField("/home/adan/work", text: $folder)
+                            .font(.system(.subheadline, design: .monospaced))
+                            .foregroundStyle(Palette.textPrimary)
+                            .tint(Palette.accent)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($folderFocused)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(Palette.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(folderFocused ? Palette.accent : Palette.border,
+                                            lineWidth: folderFocused ? 1.5 : 1)
+                            )
+                    }
+
+                    if let error {
+                        Text(error)
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(Palette.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Button(action: start) {
+                        HStack(spacing: 8) {
+                            if isSpawning { ProgressView().tint(.black) }
+                            Text(isSpawning ? "Starting…" : "Start Session")
+                                .font(.system(.body).weight(.semibold))
+                        }
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Palette.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .opacity(canStart ? 1 : 0.5)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canStart)
+
+                    Spacer()
+                }
+                .padding(20)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(Palette.textSecondary)
+                }
+            }
+        }
+        .tint(Palette.accent)
+        .presentationDetents([.medium])
+    }
+
+    private var canStart: Bool {
+        !isSpawning && !folder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func start() {
+        isSpawning = true
+        error = nil
+        Task {
+            do {
+                _ = try await relayService.spawnSession(agent: agent.rawValue, cwd: folder)
+                await MainActor.run { dismiss() }
+            } catch {
+                await MainActor.run {
+                    isSpawning = false
+                    self.error = "Couldn't start session: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }
 
