@@ -47,7 +47,7 @@ struct PairingView: View {
     private var header: some View {
         HStack(spacing: 12) {
             BlockCursor(mode: isConnecting ? .working : .idle, width: 12, height: 22)
-            Text("ClaudeWatch")
+            Text("Apuri Go")
                 .font(.ledgerTitle(28))
                 .tracking(-0.5)
                 .foregroundStyle(Palette.textPrimary)

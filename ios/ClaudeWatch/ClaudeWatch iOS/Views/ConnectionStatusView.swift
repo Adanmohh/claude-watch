@@ -87,7 +87,7 @@ struct ConnectionStatusView: View {
 
     private var topBar: some View {
         HStack(spacing: 10) {
-            Text("ClaudeWatch")
+            Text("Apuri Go")
                 .font(.ledgerTitle(20))
                 .tracking(-0.5)
                 .foregroundStyle(Palette.textPrimary)

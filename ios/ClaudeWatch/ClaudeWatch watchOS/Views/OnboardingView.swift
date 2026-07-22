@@ -48,7 +48,7 @@ struct OnboardingView: View {
         HStack(spacing: 6) {
             BlockCursor(mode: isSearching ? .working : (bridgeURL != nil ? .idle : .pending),
                         width: 8, height: 15)
-            Text("ClaudeWatch")
+            Text("Apuri Go")
                 .font(.system(.caption, design: .default).weight(.semibold))
                 .foregroundStyle(Palette.textPrimary)
             Spacer(minLength: 0)
