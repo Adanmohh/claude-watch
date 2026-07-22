@@ -440,6 +440,13 @@ final class RelayService: ObservableObject {
         pendingActivationSessionId = nil
     }
 
+    // MARK: - Terminal transport
+
+    /// Paired bridge base URL, for the live terminal WebSocket.
+    var terminalBaseURL: URL? { bridgeClient.baseURL }
+    /// Paired bearer token, for the live terminal WebSocket.
+    var terminalToken: String? { bridgeClient.token }
+
     // MARK: - Send command
 
     /// Sends a text command to the bridge (iOS equivalent of watchOS voice input).

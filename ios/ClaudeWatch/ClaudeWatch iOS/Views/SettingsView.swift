@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("connectionMode") private var connectionMode: ConnectionMode = .auto
+    @AppStorage("terminalEnabled") private var terminalEnabled = false
 
     @State private var showForgetConfirmation = false
 
@@ -13,6 +14,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 connectionSection
+                terminalSection
                 pairedMacSection
                 aboutSection
             }
@@ -55,6 +57,23 @@ struct SettingsView: View {
                 .foregroundStyle(Palette.textDim)
         } footer: {
             Text("Auto discovers the bridge via Bonjour on your local network. Remote servers are reached by URL.")
+                .foregroundStyle(Palette.textDim)
+        }
+        .listRowBackground(Palette.surface)
+    }
+
+    private var terminalSection: some View {
+        Section {
+            Toggle(isOn: $terminalEnabled) {
+                Text("Enable Terminal")
+                    .foregroundStyle(Palette.textPrimary)
+            }
+            .tint(Palette.accent)
+        } header: {
+            Text("Terminal")
+                .foregroundStyle(Palette.textDim)
+        } footer: {
+            Text("Adds a Terminal tab with a live, fully interactive shell to your Mac. This is more powerful than the approve/deny Feed — enable only on trusted devices.")
                 .foregroundStyle(Palette.textDim)
         }
         .listRowBackground(Palette.surface)

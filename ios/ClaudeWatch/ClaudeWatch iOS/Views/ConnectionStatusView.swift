@@ -9,6 +9,10 @@ struct ConnectionStatusView: View {
     @State private var showSettings = false
     @State private var showNewSession = false
     @State private var activeSessionIndex = 0
+    @State private var viewMode: ViewMode = .feed
+    @AppStorage("terminalEnabled") private var terminalEnabled = false
+
+    private enum ViewMode: Hashable { case feed, terminal }
 
     var body: some View {
         NavigationStack {
@@ -19,9 +23,21 @@ struct ConnectionStatusView: View {
                     topBar
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
-                        .padding(.bottom, 10)
+                        .padding(.bottom, terminalEnabled ? 8 : 10)
 
-                    if relayService.sessions.isEmpty {
+                    if terminalEnabled {
+                        Picker("View", selection: $viewMode) {
+                            Text("Feed").tag(ViewMode.feed)
+                            Text("Terminal").tag(ViewMode.terminal)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 10)
+                    }
+
+                    if terminalEnabled && viewMode == .terminal {
+                        terminalContent
+                    } else if relayService.sessions.isEmpty {
                         waitingView
                     } else {
                         sessionPager
@@ -141,6 +157,23 @@ struct ConnectionStatusView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    // MARK: - Terminal
+
+    @ViewBuilder
+    private var terminalContent: some View {
+        if let base = relayService.terminalBaseURL, let token = relayService.terminalToken {
+            TerminalScreen(baseURL: base, token: token)
+        } else {
+            VStack(spacing: 8) {
+                BlockCursor(mode: .offline, width: 8, height: 16)
+                Text("Not paired — connect a bridge first")
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(Palette.textSecondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     // MARK: - Session pager
