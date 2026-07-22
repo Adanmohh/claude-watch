@@ -24,6 +24,29 @@ platform :ios do
       in_house: false
     )
 
+    # Register the bundle identifiers on the Developer portal if they don't exist
+    # yet. match does NOT create missing bundle IDs, so do it here via Spaceship
+    # using the App Store Connect API token loaded above.
+    require 'spaceship'
+    Spaceship::ConnectAPI.token = Spaceship::ConnectAPI::Token.from(
+      hash: lane_context[SharedValues::APP_STORE_CONNECT_API_KEY]
+    )
+    {
+      IOS_APP_ID   => "ClaudeWatch",
+      WATCH_APP_ID => "ClaudeWatch WatchKit App"
+    }.each do |identifier, name|
+      if Spaceship::ConnectAPI::BundleId.find(identifier)
+        UI.message("Bundle ID #{identifier} already registered")
+      else
+        UI.message("Registering bundle ID #{identifier}")
+        Spaceship::ConnectAPI::BundleId.create(
+          name: name,
+          platform: Spaceship::ConnectAPI::BundleIdPlatform::IOS,
+          identifier: identifier
+        )
+      end
+    end
+
     # Fetch (and create if missing) the App Store distribution certificate and
     # provisioning profiles for both the app and the watch app. Config comes from
     # fastlane/Matchfile (git_url, type: appstore, both app identifiers).
