@@ -1,6 +1,6 @@
 name: ClaudeWatch
 options:
-  bundleIdPrefix: com.shobhit.claudewatch
+  bundleIdPrefix: fi.neogrant
   deploymentTarget:
     iOS: "17.0"
     watchOS: "10.0"
@@ -10,6 +10,9 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     ONLY_ACTIVE_ARCH: true
+    DEVELOPMENT_TEAM: W25WJD2YZW
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 targets:
   ClaudeWatch:
@@ -20,10 +23,16 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.shobhit.claudewatch
+        PRODUCT_BUNDLE_IDENTIFIER: fi.neogrant.claudewatch
         INFOPLIST_FILE: "ClaudeWatch iOS/Info.plist"
-        PRODUCT_NAME: Agent Watch
+        PRODUCT_NAME: ClaudeWatch
         GENERATE_INFOPLIST_FILE: false
+        DEVELOPMENT_TEAM: W25WJD2YZW
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "match AppStore fi.neogrant.claudewatch"
     dependencies:
       - target: ClaudeWatchWatch
         embed: true
@@ -36,13 +45,19 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.shobhit.claudewatch.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: fi.neogrant.claudewatch.watchkitapp
         INFOPLIST_FILE: "ClaudeWatch watchOS/Info.plist"
-        PRODUCT_NAME: Agent Watch
+        PRODUCT_NAME: ClaudeWatch
         GENERATE_INFOPLIST_FILE: false
         SUPPORTS_MACCATALYST: false
+        DEVELOPMENT_TEAM: W25WJD2YZW
         ARCHS: "arm64 arm64e arm64_32"
         "EXCLUDED_ARCHS[sdk=watchsimulator*]": arm64e
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          PROVISIONING_PROFILE_SPECIFIER: "match AppStore fi.neogrant.claudewatch.watchkitapp"
 
 schemes:
   ClaudeWatch:

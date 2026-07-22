@@ -53,6 +53,13 @@ final class BridgeClient {
         UserDefaults.standard.set(urlString, forKey: "bridge_url")
     }
 
+    /// Configures the client with a full base URL (supports https and nonstandard ports).
+    /// Used for remote/public bridge servers reached over the internet.
+    func configure(baseURL: URL) {
+        self.baseURL = baseURL
+        UserDefaults.standard.set(baseURL.absoluteString, forKey: "bridge_url")
+    }
+
     var isPaired: Bool {
         token != nil && baseURL != nil
     }

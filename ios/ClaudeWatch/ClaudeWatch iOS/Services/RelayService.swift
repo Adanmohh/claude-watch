@@ -135,6 +135,31 @@ final class RelayService: ObservableObject {
         updateWatchState()
     }
 
+    /// Pairs using a full base URL, e.g. `https://cc-bridge.sykli.ai:8443`.
+    /// This is the first-class path for connecting to a remote/public bridge over the internet.
+    func pairWithURL(_ urlString: String, code: String) async throws {
+        guard let baseURL = BridgeURL.normalize(urlString) else {
+            throw BridgeClient.BridgeError.serverError("Invalid server URL")
+        }
+        print("[RelayService] Remote URL pair: \(baseURL.absoluteString), code: \(code)")
+
+        bridgeClient.configure(baseURL: baseURL)
+
+        try await bridgeClient.pair(code: code)
+
+        machineName = baseURL.host
+        lastConnected = Date()
+        isPaired = true
+        connectionState = .connected
+
+        UserDefaults.standard.set(baseURL.host, forKey: "paired_machine_name")
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "last_connected")
+
+        startEventStream()
+        startElapsedTimer()
+        updateWatchState()
+    }
+
     /// Removes pairing and disconnects.
     func unpair() {
         sseClient.disconnect()

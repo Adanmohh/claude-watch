@@ -5,13 +5,14 @@ struct OnboardingView: View {
     @StateObject private var bridge = WatchBridgeClient.shared
 
     @State private var code = ""
-    @State private var ipAddress = ""
+    @State private var serverAddress = ""
     @State private var isSearching = false
     @State private var isConnecting = false
     @State private var error: String?
     @State private var bridgeURL: URL?
+    @State private var manualEntry = false
     @FocusState private var codeFocused: Bool
-    @FocusState private var ipFocused: Bool
+    @FocusState private var addressFocused: Bool
 
     var body: some View {
         VStack(spacing: 6) {
@@ -27,13 +28,13 @@ struct OnboardingView: View {
                 Spacer()
                 ProgressView()
                     .tint(Theme.Text.secondary)
-                Text("Searching...")
+                Text("Connecting...")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.Text.secondary)
                 Spacer()
 
-            } else if bridgeURL != nil {
-                // Bridge found — code entry
+            } else if bridgeURL != nil && !manualEntry {
+                // Bridge found (LAN or remote) — code entry
                 Text("Enter code from Mac")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.Text.secondary)
@@ -56,21 +57,32 @@ struct OnboardingView: View {
                         .scaleEffect(0.7)
                 }
 
+                Button("Use a different server") {
+                    bridgeURL = nil
+                    manualEntry = true
+                    code = ""
+                    addressFocused = true
+                }
+                .font(.system(size: 10))
+                .foregroundColor(Theme.Text.secondary)
+
             } else {
-                // Not found — IP entry right away
-                Text("Enter Mac IP")
+                // Manual entry — LAN IP or full remote URL (first-class)
+                Text("Enter server address")
                     .font(.system(size: 11))
                     .foregroundColor(Theme.Text.secondary)
 
-                Text("Wi-Fi not required — routes via iPhone")
+                Text("LAN IP or https://host:port")
                     .font(.system(size: 9))
                     .foregroundColor(Theme.Text.dimmed)
 
-                TextField("192.168.1.x", text: $ipAddress)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                TextField("IP or https://host:port", text: $serverAddress)
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(Theme.Text.primary)
                     .multilineTextAlignment(.center)
-                    .focused($ipFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($addressFocused)
 
                 Button { connectManual() } label: {
                     Text("Connect")
@@ -82,9 +94,9 @@ struct OnboardingView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
-                .disabled(ipAddress.isEmpty)
+                .disabled(serverAddress.isEmpty)
 
-                Button("Retry auto") { searchForBridge() }
+                Button("Search LAN automatically") { searchForBridge() }
                     .font(.system(size: 10))
                     .foregroundColor(Theme.Text.secondary)
             }
@@ -105,32 +117,77 @@ struct OnboardingView: View {
         }
     }
 
+    // MARK: - Manual connect (LAN IP or remote URL)
+
     private func connectManual() {
-        let ip = ipAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !ip.isEmpty else { return }
+        let raw = serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
         isSearching = true
         error = nil
 
         Task {
-            for port in 7860...7869 {
-                let url = URL(string: "http://\(ip):\(port)/status")!
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 3
-                do {
-                    let (_, response) = try await URLSession.shared.data(for: request)
-                    if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                        await MainActor.run {
-                            isSearching = false
-                            bridgeURL = URL(string: "http://\(ip):\(port)")
-                            codeFocused = true
-                        }
-                        return
+            if BridgeURL.isBareIPv4(raw) {
+                await probeLAN(ip: raw)
+            } else if let url = BridgeURL.normalize(raw) {
+                await verifyRemote(url)
+            } else {
+                await MainActor.run {
+                    isSearching = false
+                    error = "Invalid address"
+                }
+            }
+        }
+    }
+
+    /// Bare LAN IP → probe the bridge's default port range over http.
+    private func probeLAN(ip: String) async {
+        for port in 7860...7869 {
+            let url = URL(string: "http://\(ip):\(port)/status")!
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 3
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                    await MainActor.run {
+                        isSearching = false
+                        bridgeURL = URL(string: "http://\(ip):\(port)")
+                        manualEntry = false
+                        codeFocused = true
                     }
-                } catch { continue }
+                    return
+                }
+            } catch { continue }
+        }
+        await MainActor.run {
+            isSearching = false
+            self.error = "Can't reach \(ip)"
+        }
+    }
+
+    /// Full URL / host:port → verify the bridge is reachable, then move to code entry.
+    private func verifyRemote(_ url: URL) async {
+        let statusURL = url.appendingPathComponent("status")
+        var request = URLRequest(url: statusURL)
+        request.timeoutInterval = 8
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                await MainActor.run {
+                    isSearching = false
+                    bridgeURL = url
+                    manualEntry = false
+                    codeFocused = true
+                }
+                return
             }
             await MainActor.run {
                 isSearching = false
-                self.error = "Can't reach \(ip)"
+                self.error = "Server not reachable"
+            }
+        } catch {
+            await MainActor.run {
+                isSearching = false
+                self.error = "Can't reach \(url.host ?? "server")"
             }
         }
     }
@@ -138,13 +195,18 @@ struct OnboardingView: View {
     private func searchForBridge() {
         isSearching = true
         error = nil
+        manualEntry = false
         Task {
             let url = await bridge.discover()
             await MainActor.run {
                 isSearching = false
                 bridgeURL = url
-                if url != nil { codeFocused = true }
-                else { ipFocused = true }
+                if url != nil {
+                    codeFocused = true
+                } else {
+                    manualEntry = true
+                    addressFocused = true
+                }
             }
         }
     }
@@ -161,7 +223,7 @@ struct OnboardingView: View {
                     session.isPaired = true
                     session.sessionState = SessionState(
                         connection: .connected, activity: .idle,
-                        machineName: "Mac", modelName: nil,
+                        machineName: url.host ?? "Mac", modelName: nil,
                         workingDirectory: nil,
                         elapsedSeconds: 0, filesChanged: 0, linesAdded: 0,
                         transportMode: .lan

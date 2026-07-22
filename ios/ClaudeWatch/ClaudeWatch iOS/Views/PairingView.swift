@@ -55,7 +55,7 @@ struct PairingView: View {
                 .foregroundStyle(Color.claudeOrange)
 
             Text(showManualIP
-                 ? "Enter your Mac's IP and the pairing code"
+                 ? "Enter your server address and the pairing code"
                  : "Enter the pairing code from your Mac")
                 .font(.system(size: 15))
                 .foregroundStyle(Color.subtleText)
@@ -65,9 +65,11 @@ struct PairingView: View {
 
     private var ipEntrySection: some View {
         HStack(spacing: 8) {
-            TextField("192.168.1.x", text: $ipAddress)
-                .keyboardType(.decimalPad)
-                .font(.system(size: 17, weight: .semibold, design: .monospaced))
+            TextField("IP or https://host:port", text: $ipAddress)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white)
                 .tint(Color.claudeOrange)
                 .multilineTextAlignment(.center)
@@ -153,7 +155,7 @@ struct PairingView: View {
                         isIPFocused = true
                     }
                 } label: {
-                    Text("Can't connect? Enter IP manually")
+                    Text("Enter IP or remote server URL")
                         .font(.system(size: 13))
                         .foregroundStyle(Color.claudeOrange)
                 }
@@ -200,14 +202,20 @@ struct PairingView: View {
         Task {
             do {
                 if showManualIP {
-                    let ip = ipAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !ip.isEmpty else {
+                    let address = ipAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !address.isEmpty else {
                         await MainActor.run {
-                            showPairingError("Please enter your Mac's IP address.")
+                            showPairingError("Please enter an IP address or server URL.")
                         }
                         return
                     }
-                    try await relayService.pairWithIP(ip, code: code)
+                    if BridgeURL.isBareIPv4(address) {
+                        // Bare LAN IP → probe the bridge's default port range over http.
+                        try await relayService.pairWithIP(address, code: code)
+                    } else {
+                        // Full URL / host:port → connect directly (remote, https by default).
+                        try await relayService.pairWithURL(address, code: code)
+                    }
                 } else {
                     try await relayService.pair(code: code)
                 }
