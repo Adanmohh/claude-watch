@@ -5,7 +5,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { spawn as childSpawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { Bonjour } from "bonjour-service";
+import { WebSocketServer } from "ws";
+import * as pty from "node-pty";
 
 // ---------------------------------------------------------------------------
 // Logging (must be defined before use)
@@ -46,6 +49,11 @@ const CODEX_BIN = findBinary("codex", [
   "/usr/local/bin/codex",
   "/opt/homebrew/bin/codex",
 ]);
+
+// The live interactive Claude Code tmux session (shared with the laptop/SSH).
+// The phone attaches as a grouped member so it sizes independently.
+const TMUX_SESSION = process.env.CLAUDE_TMUX_SESSION || "claude";
+const TERMINAL_GROUP_MEMBER = process.env.CLAUDE_TMUX_PHONE || "phone";
 
 if (!CLAUDE_BIN) {
   log("warn", "Could not find 'claude' binary — Claude sessions will not be available.");
@@ -1070,27 +1078,44 @@ async function handleCommand(req, res) {
       targetSession = sessions.get(sessionId);
       if (targetSession && !targetSession.ptyProcess) {
         // Session exists but has no PTY (external hook-created session).
-        // Run the prompt via CLI in non-interactive mode — hooks will forward output.
         const promptText = command.replace(/\n$/, "").trim();
         if (!promptText) {
           return jsonResponse(res, 400, { error: "Empty command" });
         }
 
-        const bin = targetSession.agent === "codex" ? CODEX_BIN : CLAUDE_BIN;
-        if (!bin) {
-          return jsonResponse(res, 500, { error: `No binary found for ${targetSession.agent}` });
+        if (targetSession.agent !== "codex") {
+          // Claude: inject into the LIVE interactive tmux session via send-keys
+          // so the message continues the one running conversation/context (the
+          // same session the laptop and the phone Terminal attach to), instead
+          // of a stateless `claude -p` oneshot. `-l -- ` sends the text
+          // literally (no key-name lookup, `--` guards a leading dash); a
+          // separate `Enter` submits it. execFileSync avoids all shell quoting.
+          try {
+            execFileSync("tmux", ["send-keys", "-t", TMUX_SESSION, "-l", "--", promptText], { stdio: "ignore" });
+            execFileSync("tmux", ["send-keys", "-t", TMUX_SESSION, "Enter"], { stdio: "ignore" });
+          } catch (err) {
+            log("error", `tmux send-keys failed for session ${sessionId}: ${err.message}`);
+            return jsonResponse(res, 500, { error: `tmux send-keys failed: ${err.message}` });
+          }
+
+          log("info", `Injected prompt into tmux '${TMUX_SESSION}': "${promptText.slice(0, 80)}"`);
+          targetSession.state = "running";
+          pushSseEvent("session", { state: "running", agent: targetSession.agent, cwd: targetSession.cwd, folderName: targetSession.folderName }, sessionId);
+          return jsonResponse(res, 200, { ok: true, sessionId, agent: targetSession.agent, prompt: true, injected: "tmux" });
         }
 
-        const args = targetSession.agent === "codex"
-          ? ["exec", promptText]
-          : ["-p", promptText, "--continue"];
+        // Codex: no persistent interactive tmux session — keep the CLI oneshot.
+        const bin = CODEX_BIN;
+        if (!bin) {
+          return jsonResponse(res, 500, { error: "No binary found for codex" });
+        }
 
-        log("info", `Running ${targetSession.agent} prompt in ${targetSession.cwd}: "${promptText.slice(0, 80)}"`);
+        log("info", `Running codex prompt in ${targetSession.cwd}: "${promptText.slice(0, 80)}"`);
 
         targetSession.state = "running";
         pushSseEvent("session", { state: "running", agent: targetSession.agent, cwd: targetSession.cwd, folderName: targetSession.folderName }, sessionId);
 
-        const proc = childSpawn(bin, args, {
+        const proc = childSpawn(bin, ["exec", promptText], {
           cwd: targetSession.cwd,
           env: { ...process.env },
           stdio: ["ignore", "pipe", "pipe"],
@@ -1439,6 +1464,131 @@ async function onRequest(req, res) {
 }
 
 // ---------------------------------------------------------------------------
+// Terminal WebSocket endpoint (/terminal)
+//
+// Attaches a PTY to a GROUPED tmux member of the live `claude` session so the
+// phone mirrors the real Claude Code TUI without shrinking the laptop's view.
+// Rides the same authenticated HTTPS channel; the bearer token is passed as a
+// `?token=` query param (WS handshakes can't easily set Authorization).
+// ---------------------------------------------------------------------------
+
+const terminalWss = new WebSocketServer({ noServer: true });
+
+function authenticateTerminalUpgrade(req) {
+  try {
+    const url = new URL(req.url, "http://localhost");
+    const token = url.searchParams.get("token")
+      || req.headers["sec-websocket-protocol"]
+      || null;
+    return typeof token === "string" && token.length > 0
+      && token === sessionToken && sessionToken !== null;
+  } catch {
+    return false;
+  }
+}
+
+terminalWss.on("connection", (ws) => {
+  ws.on("error", (err) => log("error", `Terminal WS error: ${err.message}`));
+
+  log("info", "Terminal WS connected — attaching grouped tmux client");
+
+  // Grouped session: `-A` attaches to `phone` if it already exists, otherwise
+  // creates it grouped with `claude` (`-t`), sharing windows/content but with
+  // its own dimensions. Killing `phone` later never touches `claude`.
+  let ptyProcess;
+  try {
+    ptyProcess = pty.spawn("tmux", [
+      "new-session", "-A", "-t", TMUX_SESSION, "-s", TERMINAL_GROUP_MEMBER,
+    ], {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: process.env.HOME || process.cwd(),
+      env: process.env,
+      encoding: null, // raw Buffers so terminal bytes pass through untouched
+    });
+  } catch (err) {
+    log("error", `Failed to spawn terminal pty: ${err.message}`);
+    try { ws.close(); } catch { /* ignore */ }
+    return;
+  }
+
+  ptyProcess.onData((data) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(data); // Buffer -> binary frame
+    }
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    log("info", `Terminal pty exited (code ${exitCode})`);
+    if (ws.readyState === ws.OPEN) ws.close();
+  });
+
+  ws.on("message", (data, isBinary) => {
+    if (!isBinary) {
+      // Text frames may be a JSON control frame ({type:'resize',cols,rows}).
+      const text = data.toString("utf-8");
+      try {
+        const msg = JSON.parse(text);
+        if (msg && msg.type === "resize"
+            && Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
+          ptyProcess.resize(Math.max(1, msg.cols), Math.max(1, msg.rows));
+          return;
+        }
+      } catch { /* not JSON — treat as keystrokes below */ }
+      ptyProcess.write(text);
+      return;
+    }
+    // Binary frames are raw keystrokes.
+    ptyProcess.write(Buffer.isBuffer(data) ? data : Buffer.from(data));
+  });
+
+  ws.on("close", () => {
+    log("info", "Terminal WS closed — removing phone grouped client");
+    try { ptyProcess.kill(); } catch { /* ignore */ }
+    // Kill ONLY the phone grouped member — never the base `claude` session.
+    try {
+      execFileSync("tmux", ["kill-session", "-t", TERMINAL_GROUP_MEMBER], { stdio: "ignore" });
+    } catch { /* session may already be gone */ }
+  });
+});
+
+function attachTerminalUpgrade(server) {
+  server.on("upgrade", (req, socket, head) => {
+    let pathname;
+    try {
+      pathname = new URL(req.url, "http://localhost").pathname;
+    } catch {
+      socket.destroy();
+      return;
+    }
+    if (pathname !== "/terminal") {
+      socket.destroy();
+      return;
+    }
+
+    socket.on("error", (err) => log("error", `Terminal upgrade socket error: ${err.message}`));
+
+    if (isRateLimited()) {
+      socket.write("HTTP/1.1 429 Too Many Requests\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    if (!authenticateTerminalUpgrade(req)) {
+      recordRateLimitAttempt();
+      log("warn", "Terminal WS upgrade rejected — bad or missing token");
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
+    terminalWss.handleUpgrade(req, socket, head, (ws) => {
+      terminalWss.emit("connection", ws, req);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Server startup
 // ---------------------------------------------------------------------------
 
@@ -1454,6 +1604,7 @@ function tryListen(server, port) {
 
 async function startServer() {
   const server = http.createServer(onRequest);
+  attachTerminalUpgrade(server);
 
   let boundPort = null;
   for (let port = PORT_RANGE_START; port <= PORT_RANGE_END; port++) {
