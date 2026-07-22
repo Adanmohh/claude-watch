@@ -1,4 +1,4 @@
-app_identifier("fi.neogrant.claudewatch")
+app_identifier("com.introinnovation.claudewatch")
 team_id("W25WJD2YZW")
 
 # App Store Connect authentication is handled via the App Store Connect API key

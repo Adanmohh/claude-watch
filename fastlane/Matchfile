@@ -4,8 +4,8 @@ storage_mode("git")
 type("appstore")
 
 app_identifier([
-  "fi.neogrant.claudewatch",
-  "fi.neogrant.claudewatch.watchkitapp"
+  "com.introinnovation.claudewatch",
+  "com.introinnovation.claudewatch.watchkitapp"
 ])
 
 # Non-interactive on CI: never prompt, fail fast if something is missing.

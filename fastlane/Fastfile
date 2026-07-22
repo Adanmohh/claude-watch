@@ -1,8 +1,8 @@
 default_platform(:ios)
 
 # Bundle identifiers for the iOS container app and the embedded watchOS app.
-IOS_APP_ID   = "fi.neogrant.claudewatch"
-WATCH_APP_ID = "fi.neogrant.claudewatch.watchkitapp"
+IOS_APP_ID   = "com.introinnovation.claudewatch"
+WATCH_APP_ID = "com.introinnovation.claudewatch.watchkitapp"
 
 # Paths (relative to the repo root, which is fastlane's working directory for actions).
 XCODE_PROJECT = "ios/ClaudeWatch/ClaudeWatch.xcodeproj"

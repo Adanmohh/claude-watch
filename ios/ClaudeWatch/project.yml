@@ -1,6 +1,6 @@
 name: ClaudeWatch
 options:
-  bundleIdPrefix: fi.neogrant
+  bundleIdPrefix: com.introinnovation
   deploymentTarget:
     iOS: "17.0"
     watchOS: "10.0"
@@ -23,7 +23,7 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: fi.neogrant.claudewatch
+        PRODUCT_BUNDLE_IDENTIFIER: com.introinnovation.claudewatch
         INFOPLIST_FILE: "ClaudeWatch iOS/Info.plist"
         PRODUCT_NAME: ClaudeWatch
         GENERATE_INFOPLIST_FILE: false
@@ -32,7 +32,7 @@ targets:
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Distribution"
-          PROVISIONING_PROFILE_SPECIFIER: "match AppStore fi.neogrant.claudewatch"
+          PROVISIONING_PROFILE_SPECIFIER: "match AppStore com.introinnovation.claudewatch"
     dependencies:
       - target: ClaudeWatchWatch
         embed: true
@@ -45,7 +45,7 @@ targets:
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: fi.neogrant.claudewatch.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: com.introinnovation.claudewatch.watchkitapp
         INFOPLIST_FILE: "ClaudeWatch watchOS/Info.plist"
         PRODUCT_NAME: ClaudeWatch
         GENERATE_INFOPLIST_FILE: false
@@ -57,7 +57,7 @@ targets:
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "Apple Distribution"
-          PROVISIONING_PROFILE_SPECIFIER: "match AppStore fi.neogrant.claudewatch.watchkitapp"
+          PROVISIONING_PROFILE_SPECIFIER: "match AppStore com.introinnovation.claudewatch.watchkitapp"
 
 schemes:
   ClaudeWatch:

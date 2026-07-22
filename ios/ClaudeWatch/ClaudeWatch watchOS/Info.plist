@@ -32,6 +32,6 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>fi.neogrant.claudewatch</string>
+	<string>com.introinnovation.claudewatch</string>
 </dict>
 </plist>
