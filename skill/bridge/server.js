@@ -83,6 +83,9 @@ const CODEX_SESSION_ROOT = path.join(os.homedir(), ".codex", "sessions");
 const CODEX_LOG_FILE = path.join(os.homedir(), ".codex", "log", "codex-tui.log");
 const BRIDGE_ID = crypto.randomUUID();
 
+// Persist the paired device token so restarts/deploys don't force a re-pair.
+const TOKEN_FILE = path.join(os.homedir(), ".claude-watch-token");
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -147,7 +150,31 @@ function generatePairingCode() {
 function generateSessionToken() {
   const token = crypto.randomBytes(32).toString("hex");
   sessionToken = token;
+  // Persist so the device stays authorized across bridge restarts/deploys.
+  // A new pairing (new code -> new token) overwrites this, which is correct.
+  try {
+    fs.writeFileSync(TOKEN_FILE, token, { mode: 0o600 });
+  } catch (err) {
+    log("warn", `Could not persist device token: ${err.message}`);
+  }
   return token;
+}
+
+// Restore a previously paired device token from disk (if any) so authed
+// requests (spawn, terminal WS, SSE) survive a restart. A brand-new install
+// with no saved token simply leaves sessionToken null until first pair.
+function restoreSessionToken() {
+  try {
+    if (fs.existsSync(TOKEN_FILE)) {
+      const saved = fs.readFileSync(TOKEN_FILE, "utf-8").trim();
+      if (saved) {
+        sessionToken = saved;
+        log("info", "Restored saved device token");
+      }
+    }
+  } catch (err) {
+    log("warn", `Could not restore device token: ${err.message}`);
+  }
 }
 
 function isRateLimited() {
@@ -1639,6 +1666,10 @@ async function startServer() {
   }
 
   log("info", `Bridge server listening on 0.0.0.0:${boundPort}`);
+
+  // Restore a persisted device token (if any) before advertising a pairing code,
+  // so an already-paired phone stays authorized across restarts.
+  restoreSessionToken();
 
   const code = generatePairingCode();
 
